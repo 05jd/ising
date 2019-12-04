@@ -1,4 +1,5 @@
 import argparse
+import os.path
 
 import numpy as np
 import torch
@@ -25,7 +26,7 @@ def parse_option_args():
     parser.add_argument('--log-interval', type=int, default=10, metavar='N',
                         help='how many batches to wait before logging '
                              'training status')
-    parser.add_argument('--checkpoint-dir', type=str, default='checkpoint',
+    parser.add_argument('--checkpoint-dir', type=str, default='./checkpoints',
                         metavar='DIR',
                         help='Checkpoint directory to store a trained model')
     args = parser.parse_args()
@@ -109,16 +110,16 @@ def load_dataloader(args):
 def train(model, device, train_loader, criterion, optimizer, epoch,
           log_interval=10):
     model.train()
-    for batch_idx, (data, target) in enumerate(train_loader):
-        data, target = data.to(device), target.to(device)
+    for batch_idx, (inputs, targets) in enumerate(train_loader):
+        inputs, targets = inputs.to(device), targets.to(device)
         optimizer.zero_grad()
-        output = model(data)
-        loss = criterion(output, target)
+        outputs = model(inputs)
+        loss = criterion(outputs, targets)
         loss.backward()
         optimizer.step()
         if batch_idx % log_interval == 0:
             print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
-                epoch, batch_idx * len(data), len(train_loader.dataset),
+                epoch, batch_idx * len(inputs), len(train_loader.dataset),
                        100. * batch_idx / len(train_loader), loss.item()), end='\r')
 
 
@@ -127,12 +128,12 @@ def evaluate(model, device, test_loader, criterion):
     test_loss = 0
     correct = 0
     with torch.no_grad():
-        for data, target in test_loader:
-            data, target = data.to(device), target.to(device)
-            output = model(data)
-            test_loss += criterion(output, target).item()  # sum up batch loss
+        for inputs, targets in test_loader:
+            inputs, targets = inputs.to(device), targets.to(device)
+            output = model(inputs)
+            test_loss += criterion(output, targets).item()  # sum up batch loss
             pred = output.argmax(dim=1, keepdim=True)  # get the index of the max log-probability
-            correct += pred.eq(target.view_as(pred)).sum().item()
+            correct += pred.eq(targets.view_as(pred)).sum().item()
 
     test_loss /= len(test_loader.dataset)
     print('\nTest set: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)\n'.format(
@@ -142,8 +143,9 @@ def evaluate(model, device, test_loader, criterion):
 
 def main():
     args = parse_option_args()
+
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    train_loader, val_loader = load_dataloader(args)
+    os.makedirs(args.checkpoint_path, exist_ok=True)
 
     model = ConvNet()
     model.to(device)
@@ -152,11 +154,13 @@ def main():
     optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=0.9)
     scheduler = StepLR(optimizer, step_size=1, gamma=args.gamma)
 
+    train_loader, val_loader = load_dataloader(args)
     for epoch in range(1, args.epochs + 1):
         print('Epoch %d' % epoch)
         train(model, device, train_loader, criterion, optimizer, epoch)
         evaluate(model, device, val_loader, criterion)
         scheduler.step()
+        torch.save(model, os.path.join(args.checkpoint_path, 'model.pt'))
     print('Finished Training')
 
 
