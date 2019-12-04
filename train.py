@@ -26,9 +26,6 @@ def parse_option_args():
     parser.add_argument('--log-interval', type=int, default=10, metavar='N',
                         help='how many batches to wait before logging '
                              'training status')
-    parser.add_argument('--checkpoint-dir', type=str, default='./checkpoints',
-                        metavar='DIR',
-                        help='Checkpoint directory to store a trained model')
     args = parser.parse_args()
     return args
 
@@ -48,7 +45,7 @@ class ConvNet(nn.Module):
     def __init__(self, config=(6, 6, 'p', 12, 12)):
         super(ConvNet, self).__init__()
 
-        self.layers = []
+        layers = []
         in_channels = 1  # single channel
         for cfg in config:
             if isinstance(cfg, int):
@@ -59,13 +56,12 @@ class ConvNet(nn.Module):
             else:
                 assert cfg == 'p'
                 layer = nn.MaxPool2d(2, 2)
-            self.layers.append(layer)
+            layers.append(layer)
+        self.conv = nn.Sequential(*layers)
         self.fc = nn.Linear(in_channels, 2)
 
     def forward(self, x):
-        for layer in self.layers:
-            x = layer(x)
-        # (N, C, W, H)
+        x = self.conv(x)
         x = F.max_pool2d(x, kernel_size=x.size()[2:]).squeeze()
         return self.fc(x)
 
@@ -145,8 +141,6 @@ def main():
     args = parse_option_args()
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    os.makedirs(args.checkpoint_path, exist_ok=True)
-
     model = ConvNet()
     model.to(device)
 
@@ -160,7 +154,7 @@ def main():
         train(model, device, train_loader, criterion, optimizer, epoch)
         evaluate(model, device, val_loader, criterion)
         scheduler.step()
-        torch.save(model, os.path.join(args.checkpoint_path, 'model.pt'))
+        torch.save(model, os.path.join('model.pt'))
     print('Finished Training')
 
 
